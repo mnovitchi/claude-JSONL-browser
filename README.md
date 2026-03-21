@@ -22,7 +22,8 @@ Claude Code CLI automatically saves all your conversations in JSONL format at `~
 1. Visit [jsonl.withlinda.dev](https://jsonl.withlinda.dev)
 2. Locate your Claude Code logs:
    - **On Mac**: Press `Shift+Cmd+G` in Finder and type `~/.claude/projects/`
-   - **On Linux/Windows**: Navigate to `~/.claude/projects/` in your file manager
+   - **On Linux**: Navigate to `~/.claude/projects/` in your file manager
+   - **On Windows**: Navigate to `%UserProfile%/.claude/projects/` in your file manager
    
    ![Go to Folder in Finder](Readme-images/Go-to-folder.png)
 3. Drag & drop or upload your `.jsonl` files
