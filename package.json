@@ -8,10 +8,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
-    "@vercel/analytics": "^1.5.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.495.0",
     "next": "15.1.11",
@@ -20,6 +22,7 @@
     "tailwind-merge": "^2.5.5"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2",
     "@types/node": "^22.13.5",
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
