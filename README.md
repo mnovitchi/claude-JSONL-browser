@@ -11,7 +11,7 @@ This fork wraps the existing client-side web app in a [Tauri](https://tauri.app/
 - **Static export** — `next.config.mjs` enables `output: 'export'` so the app builds to `out/` for embedding in the native shell.
 - **Fully offline** — removed `@vercel/analytics`; the desktop build makes no network calls.
 - **Installers too** — `tauri build` also emits an MSI (~3 MB) and an NSIS setup `.exe` (~2 MB).
-- **macOS-capable** — the same codebase builds a `.app`/`.dmg` on a Mac (Tauri can't cross-compile from Windows; macOS validation is tracked in [issue #2](https://github.com/mnovitchi/claude-JSONL-browser/issues/2)).
+- **macOS-capable** — the same codebase builds a universal `.app`/`.dmg` on a Mac. Tauri can't cross-compile from Windows, so the [release pipeline](#releasing) builds macOS on a native GitHub Actions runner (runtime validation on Apple hardware is tracked in [issue #2](https://github.com/mnovitchi/claude-JSONL-browser/issues/2)).
 
 ### Building the desktop app
 
@@ -23,6 +23,26 @@ npm run tauri:dev     # native dev window with live reload
 ```
 
 The original web workflows (`npm run dev` / `npm run build`) are unchanged.
+
+### Releasing
+
+Releases are automated by GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)). Pushing a version tag builds installers for Windows and macOS on native runners and publishes a **draft** GitHub Release with the assets attached:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+This produces:
+
+- **Windows** — MSI (`*_x64_en-US.msi`) and NSIS setup (`*_x64-setup.exe`)
+- **macOS** — universal `.dmg` (Intel + Apple Silicon)
+
+The workflow syncs the tag's version into `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` before building, so the git tag is the single source of truth. Review the draft release, then publish it.
+
+> **Tags must be plain numeric semver** (e.g. `v1.2.3`). The Windows MSI bundler rejects non-numeric pre-release suffixes like `-test` or `-rc1` (it errors with *"pre-release identifier in app version must be numeric-only"*); only macOS tolerates them. Don't use suffixed tags for releases.
+>
+> Binaries are **unsigned** — Windows SmartScreen and macOS Gatekeeper will warn on first launch until code signing is configured.
 
 ---
 
