@@ -418,12 +418,20 @@ export default function JsonlConverter() {
     setError('')
   }
 
+  const saveMarkdown = async (fileName: string, content: string) => {
+    try {
+      await downloadMarkdown(fileName, content)
+    } catch {
+      showError('Could not save the Markdown file.')
+    }
+  }
+
   const exportAllMarkdown = (mode: 'readable' | 'full') => {
     const sections = files
       .filter((file) => (mode === 'full' ? file.fullMarkdown : file.markdown))
       .map((file) => `# File: ${file.name}\n\n${mode === 'full' ? file.fullMarkdown : file.markdown}`)
 
-    downloadMarkdown(
+    void saveMarkdown(
       `combined-${mode}-export-${new Date().toISOString().slice(0, 10)}.md`,
       sections.join('\n\n---\n\n') || '# Combined JSONL Exports\n\nNo converted files.',
     )
@@ -749,7 +757,7 @@ export default function JsonlConverter() {
                     <>
                       <button
                         type="button"
-                        onClick={() => downloadMarkdown(`${baseName(currentFile.name)}-readable.md`, currentFile.markdown || '')}
+                        onClick={() => void saveMarkdown(`${baseName(currentFile.name)}-readable.md`, currentFile.markdown || '')}
                         className="px-3 py-2 bg-everforest-bg2 text-everforest-blue border border-everforest-bg4 rounded-md text-xs flex items-center gap-1 hover:bg-everforest-bg3 transition-colors"
                       >
                         <Download className="w-3.5 h-3.5" />
@@ -757,7 +765,7 @@ export default function JsonlConverter() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => downloadMarkdown(`${baseName(currentFile.name)}-full.md`, currentFile.fullMarkdown || '')}
+                        onClick={() => void saveMarkdown(`${baseName(currentFile.name)}-full.md`, currentFile.fullMarkdown || '')}
                         className="px-3 py-2 bg-everforest-bg2 text-everforest-aqua border border-everforest-bg4 rounded-md text-xs flex items-center gap-1 hover:bg-everforest-bg3 transition-colors"
                       >
                         <Layers className="w-3.5 h-3.5" />
@@ -1040,7 +1048,25 @@ function baseName(fileName: string): string {
   return fileName.replace(/\.[^/.]+$/, '').replace(/[^\w.-]+/g, '-')
 }
 
-function downloadMarkdown(fileName: string, content: string) {
+function isTauri(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+}
+
+async function downloadMarkdown(fileName: string, content: string) {
+  // Inside the Tauri desktop webview the browser blob/anchor download trick is
+  // silently ignored, so save through Tauri's native dialog + filesystem APIs.
+  if (isTauri()) {
+    const { save } = await import('@tauri-apps/plugin-dialog')
+    const { writeTextFile } = await import('@tauri-apps/plugin-fs')
+    const path = await save({
+      defaultPath: fileName,
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+    })
+    if (path) await writeTextFile(path, content)
+    return
+  }
+
+  // Plain browser build: trigger a download via a temporary anchor element.
   const blob = new Blob([content], { type: 'text/markdown' })
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
