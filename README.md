@@ -1,3 +1,35 @@
+# JSONL Browser — Desktop (Tauri) Fork
+
+> **This is a fork of [withLinda/claude-JSONL-browser](https://github.com/withLinda/claude-JSONL-browser).**
+> All credit for the original tool goes to [Linda](https://withlinda.dev). This fork tracks upstream and adds a way to run the tool as a native desktop app.
+
+## What's different in this fork
+
+This fork wraps the existing client-side web app in a [Tauri](https://tauri.app/) shell so it can be distributed as a **standalone desktop executable** — no browser, no dev server, fully offline.
+
+- **Standalone executable** — produces a single portable `jsonl-browser.exe` (~8.4 MB) on Windows, using the OS's built-in WebView2 (no bundled Chromium).
+- **Static export** — `next.config.mjs` enables `output: 'export'` so the app builds to `out/` for embedding in the native shell.
+- **Fully offline** — removed `@vercel/analytics`; the desktop build makes no network calls.
+- **Installers too** — `tauri build` also emits an MSI (~3 MB) and an NSIS setup `.exe` (~2 MB).
+- **macOS-capable** — the same codebase builds a `.app`/`.dmg` on a Mac (Tauri can't cross-compile from Windows; macOS validation is tracked in [issue #2](https://github.com/mnovitchi/claude-JSONL-browser/issues/2)).
+
+### Building the desktop app
+
+```bash
+npm install
+
+npm run tauri:build   # release build → src-tauri/target/release/jsonl-browser.exe
+npm run tauri:dev     # native dev window with live reload
+```
+
+The original web workflows (`npm run dev` / `npm run build`) are unchanged.
+
+---
+
+# Original README
+
+> The content below is the original README from the upstream project, preserved unchanged.
+
 ⚠️ **UNDER MAINTENANCE** - This project is still being actively developed. Some features may be incomplete or change without notice.
 
 # Claude Code Log Viewer
