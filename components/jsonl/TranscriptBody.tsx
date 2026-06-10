@@ -34,9 +34,26 @@ export function TranscriptBody({ body, className }: TranscriptBodyProps) {
 
   const showControls = preview.isTruncated || expanded
 
+  const collapseOnBodyClick = () => {
+    if (!expanded) return
+    // Ignore the click when the user was selecting text to copy it.
+    const selection = window.getSelection()?.toString() ?? ''
+    if (selection.trim().length > 0) return
+    setExpanded(false)
+  }
+
   return (
     <div className={className}>
-      <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-everforest-fg">{preview.text}</pre>
+      <pre
+        onClick={collapseOnBodyClick}
+        title={expanded ? 'Click to collapse' : undefined}
+        className={cn(
+          'whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-everforest-fg',
+          expanded && 'cursor-pointer',
+        )}
+      >
+        {preview.text}
+      </pre>
 
       {showControls && (
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
