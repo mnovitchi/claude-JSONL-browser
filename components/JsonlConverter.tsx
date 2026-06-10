@@ -929,6 +929,13 @@ export default function JsonlConverter() {
                     markdownText={safeMarkdown}
                     scrollRef={compareScrollRef}
                     onScroll={handleCompareScroll}
+                    expandedPanes={selectedFileId ? store.get(selectedFileId).expandedPanes ?? {} : {}}
+                    onPaneExpandedChange={(key, expanded) => {
+                      if (!selectedFileId) return
+                      store.patch(selectedFileId, {
+                        expandedPanes: { ...store.get(selectedFileId).expandedPanes, [key]: expanded },
+                      })
+                    }}
                   />
                 </div>
               ) : (
