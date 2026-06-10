@@ -7,11 +7,13 @@ interface CompareViewProps {
   fileId: string
   originalText: string
   markdownText: string
+  scrollRef?: React.Ref<HTMLDivElement>
+  onScroll?: React.UIEventHandler<HTMLDivElement>
 }
 
-export function CompareView({ fileId, originalText, markdownText }: CompareViewProps) {
+export function CompareView({ fileId, originalText, markdownText, scrollRef, onScroll }: CompareViewProps) {
   return (
-    <div className="h-full min-h-0 overflow-y-auto lg:overflow-hidden custom-scrollbar">
+    <div ref={scrollRef} onScroll={onScroll} className="h-full min-h-0 overflow-y-auto lg:overflow-hidden custom-scrollbar">
       <div className="grid min-h-full gap-3 lg:h-full lg:grid-cols-2">
         <ExpandableTextPane
           title="Original JSONL"

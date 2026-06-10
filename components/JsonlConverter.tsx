@@ -166,6 +166,21 @@ export default function JsonlConverter() {
     setIsDesktop(isTauri())
   }, [])
 
+  const transcriptScrollRef = useRef<HTMLDivElement>(null)
+  const compareScrollRef = useRef<HTMLDivElement>(null)
+
+  const handleTranscriptScroll = () => {
+    if (selectedFileId && transcriptScrollRef.current) {
+      store.patch(selectedFileId, { transcriptScrollTop: transcriptScrollRef.current.scrollTop })
+    }
+  }
+
+  const handleCompareScroll = () => {
+    if (selectedFileId && compareScrollRef.current) {
+      store.patch(selectedFileId, { compareScrollTop: compareScrollRef.current.scrollTop })
+    }
+  }
+
   useEffect(() => {
     if (!searchTerm.trim()) {
       setSearchResults({})
@@ -245,6 +260,18 @@ export default function JsonlConverter() {
 
   const convertedCount = files.filter((file) => file.converted).length
   const sidecarCount = Object.keys(sidecarFiles).length
+
+  useIsomorphicLayoutEffect(() => {
+    if (viewMode !== 'transcript' || !selectedFileId) return
+    const el = transcriptScrollRef.current
+    if (el) el.scrollTop = store.get(selectedFileId).transcriptScrollTop ?? 0
+  }, [selectedFileId, viewMode, store, currentFile?.preview])
+
+  useIsomorphicLayoutEffect(() => {
+    if (viewMode !== 'compare' || !selectedFileId) return
+    const el = compareScrollRef.current
+    if (el) el.scrollTop = store.get(selectedFileId).compareScrollTop ?? 0
+  }, [selectedFileId, viewMode, store])
 
   useEffect(() => {
     if (viewMode === 'compare' && !currentFile?.markdown) {
@@ -896,10 +923,20 @@ export default function JsonlConverter() {
 
               {viewMode === 'compare' && currentFile.markdown ? (
                 <div className="w-full flex-1 min-h-[260px] overflow-hidden">
-                  <CompareView fileId={currentFile.id} originalText={safeOriginal} markdownText={safeMarkdown} />
+                  <CompareView
+                    fileId={currentFile.id}
+                    originalText={safeOriginal}
+                    markdownText={safeMarkdown}
+                    scrollRef={compareScrollRef}
+                    onScroll={handleCompareScroll}
+                  />
                 </div>
               ) : (
-                <div className="w-full flex-1 min-h-[220px] bg-everforest-bg2 border border-everforest-bg4 rounded-lg overflow-auto custom-scrollbar">
+                <div
+                  ref={transcriptScrollRef}
+                  onScroll={handleTranscriptScroll}
+                  className="w-full flex-1 min-h-[220px] bg-everforest-bg2 border border-everforest-bg4 rounded-lg overflow-auto custom-scrollbar"
+                >
                   {currentFile.preview ? (
                     <PreviewPane preview={currentFile.preview} />
                   ) : (
