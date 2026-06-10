@@ -13,6 +13,8 @@ interface ExpandableTextPaneProps {
   maxCharacters: number
   resetKey: string
   className?: string
+  initialExpanded?: boolean
+  onExpandedChange?: (expanded: boolean) => void
 }
 
 export function ExpandableTextPane({
@@ -23,14 +25,16 @@ export function ExpandableTextPane({
   maxCharacters,
   resetKey,
   className,
+  initialExpanded = false,
+  onExpandedChange,
 }: ExpandableTextPaneProps) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(initialExpanded)
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    setExpanded(false)
+    setExpanded(initialExpanded)
     setCopied(false)
-  }, [resetKey])
+  }, [resetKey, initialExpanded])
 
   const preview = useMemo(
     () => createTextPreview(text, { expanded, maxLines, maxCharacters }),
@@ -79,7 +83,11 @@ export function ExpandableTextPane({
         {preview.isTruncated || expanded ? (
           <button
             type="button"
-            onClick={() => setExpanded((value) => !value)}
+            onClick={() => {
+              const next = !expanded
+              setExpanded(next)
+              onExpandedChange?.(next)
+            }}
             className="min-h-9 px-3 py-1.5 rounded-md border border-everforest-bg4 bg-everforest-bg2 text-everforest-aqua text-xs flex items-center justify-center gap-1 hover:bg-everforest-bg3 transition-colors"
           >
             {expanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}

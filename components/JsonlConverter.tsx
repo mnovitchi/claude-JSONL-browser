@@ -43,6 +43,11 @@ import { renderPreview } from '@/lib/jsonl/renderPreview'
 import { renderSafeOriginal } from '@/lib/jsonl/renderSafeOriginal'
 import { renderSafeText } from '@/lib/jsonl/renderSafeText'
 import type { ParseResult, PreviewModel, EventRole } from '@/lib/jsonl/types'
+import {
+  useFileViewState,
+  useIsomorphicLayoutEffect,
+  type ViewMode,
+} from '@/lib/jsonl/viewState'
 
 type UploadedFile = File
 
@@ -67,8 +72,6 @@ interface SearchResult {
     text: string
   }>
 }
-
-type ViewMode = 'transcript' | 'compare'
 
 const roleStyles: Record<EventRole, string> = {
   user: 'border-everforest-green/40 bg-everforest-bg-green/40 text-everforest-green',
@@ -117,6 +120,7 @@ export default function JsonlConverter() {
   const [importProjects, setImportProjects] = useState<ClaudeProject[]>([])
   const [importLoading, setImportLoading] = useState(false)
   const [importError, setImportError] = useState('')
+  const store = useFileViewState()
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
@@ -147,14 +151,35 @@ export default function JsonlConverter() {
   }, [editingFileId])
 
   useEffect(() => {
-    setViewMode('transcript')
-  }, [selectedFileId])
+    if (!selectedFileId) return
+    setViewMode(store.get(selectedFileId).viewMode ?? 'transcript')
+  }, [selectedFileId, store])
+
+  const changeViewMode = (mode: ViewMode) => {
+    setViewMode(mode)
+    if (selectedFileId) store.patch(selectedFileId, { viewMode: mode })
+  }
 
   // Resolved after mount so the desktop-only "Import Claude Projects" button
   // renders identically on server and first client paint (no hydration mismatch).
   useEffect(() => {
     setIsDesktop(isTauri())
   }, [])
+
+  const transcriptScrollRef = useRef<HTMLDivElement>(null)
+  const compareScrollRef = useRef<HTMLDivElement>(null)
+
+  const handleTranscriptScroll = () => {
+    if (selectedFileId && transcriptScrollRef.current) {
+      store.patch(selectedFileId, { transcriptScrollTop: transcriptScrollRef.current.scrollTop })
+    }
+  }
+
+  const handleCompareScroll = () => {
+    if (selectedFileId && compareScrollRef.current) {
+      store.patch(selectedFileId, { compareScrollTop: compareScrollRef.current.scrollTop })
+    }
+  }
 
   useEffect(() => {
     if (!searchTerm.trim()) {
@@ -236,11 +261,24 @@ export default function JsonlConverter() {
   const convertedCount = files.filter((file) => file.converted).length
   const sidecarCount = Object.keys(sidecarFiles).length
 
+  useIsomorphicLayoutEffect(() => {
+    if (viewMode !== 'transcript' || !selectedFileId) return
+    const el = transcriptScrollRef.current
+    if (el) el.scrollTop = store.get(selectedFileId).transcriptScrollTop ?? 0
+  }, [selectedFileId, viewMode, store, currentFile?.preview])
+
+  useIsomorphicLayoutEffect(() => {
+    if (viewMode !== 'compare' || !selectedFileId) return
+    const el = compareScrollRef.current
+    if (el) el.scrollTop = store.get(selectedFileId).compareScrollTop ?? 0
+  }, [selectedFileId, viewMode, store])
+
   useEffect(() => {
     if (viewMode === 'compare' && !currentFile?.markdown) {
       setViewMode('transcript')
+      if (selectedFileId) store.patch(selectedFileId, { viewMode: 'transcript' })
     }
-  }, [currentFile?.markdown, viewMode])
+  }, [currentFile?.markdown, viewMode, selectedFileId, store])
 
   const handleRenameStart = (fileId: string, currentName: string) => {
     setEditingFileId(fileId)
@@ -436,6 +474,7 @@ export default function JsonlConverter() {
 
   const deleteFile = (fileId: string) => {
     setFiles((previous) => previous.filter((file) => file.id !== fileId))
+    store.remove(fileId)
     if (selectedFileId === fileId) {
       const remaining = files.filter((file) => file.id !== fileId)
       setSelectedFileId(remaining[0]?.id || null)
@@ -449,6 +488,7 @@ export default function JsonlConverter() {
     setSearchResults({})
     setNotice('')
     setError('')
+    store.clear()
   }
 
   const saveMarkdown = async (fileName: string, content: string) => {
@@ -873,10 +913,10 @@ export default function JsonlConverter() {
 
                 {currentFile.markdown && (
                   <div className="p-1 rounded-lg bg-everforest-bg1 border border-everforest-bg4 flex items-center gap-1">
-                    <ViewModeButton active={viewMode === 'transcript'} onClick={() => setViewMode('transcript')}>
+                    <ViewModeButton active={viewMode === 'transcript'} onClick={() => changeViewMode('transcript')}>
                       Transcript
                     </ViewModeButton>
-                    <ViewModeButton active={viewMode === 'compare'} onClick={() => setViewMode('compare')}>
+                    <ViewModeButton active={viewMode === 'compare'} onClick={() => changeViewMode('compare')}>
                       Compare
                     </ViewModeButton>
                   </div>
@@ -885,12 +925,45 @@ export default function JsonlConverter() {
 
               {viewMode === 'compare' && currentFile.markdown ? (
                 <div className="w-full flex-1 min-h-[260px] overflow-hidden">
-                  <CompareView fileId={currentFile.id} originalText={safeOriginal} markdownText={safeMarkdown} />
+                  <CompareView
+                    fileId={currentFile.id}
+                    originalText={safeOriginal}
+                    markdownText={safeMarkdown}
+                    scrollRef={compareScrollRef}
+                    onScroll={handleCompareScroll}
+                    expandedPanes={selectedFileId ? store.get(selectedFileId).expandedPanes ?? {} : {}}
+                    onPaneExpandedChange={(key, expanded) => {
+                      if (!selectedFileId) return
+                      store.patch(selectedFileId, {
+                        expandedPanes: { ...store.get(selectedFileId).expandedPanes, [key]: expanded },
+                      })
+                    }}
+                  />
                 </div>
               ) : (
-                <div className="w-full flex-1 min-h-[220px] bg-everforest-bg2 border border-everforest-bg4 rounded-lg overflow-auto custom-scrollbar">
+                <div
+                  ref={transcriptScrollRef}
+                  onScroll={handleTranscriptScroll}
+                  className="w-full flex-1 min-h-[220px] bg-everforest-bg2 border border-everforest-bg4 rounded-lg overflow-auto custom-scrollbar"
+                >
                   {currentFile.preview ? (
-                    <PreviewPane preview={currentFile.preview} />
+                    <PreviewPane
+                      preview={currentFile.preview}
+                      openDetails={selectedFileId ? store.get(selectedFileId).openDetails ?? {} : {}}
+                      onToggleDetail={(id, open) => {
+                        if (!selectedFileId) return
+                        store.patch(selectedFileId, {
+                          openDetails: { ...store.get(selectedFileId).openDetails, [id]: open },
+                        })
+                      }}
+                      expandedBodies={selectedFileId ? store.get(selectedFileId).expandedBodies ?? {} : {}}
+                      onToggleBody={(id, expanded) => {
+                        if (!selectedFileId) return
+                        store.patch(selectedFileId, {
+                          expandedBodies: { ...store.get(selectedFileId).expandedBodies, [id]: expanded },
+                        })
+                      }}
+                    />
                   ) : (
                     <div className="h-full flex items-center justify-center text-everforest-grey1 text-sm px-6 text-center">
                       Convert the file to see a clean transcript.
@@ -1069,7 +1142,19 @@ function StatusMessage({ error, notice }: { error?: string; notice?: string }) {
   )
 }
 
-function PreviewPane({ preview }: { preview: PreviewModel }) {
+function PreviewPane({
+  preview,
+  openDetails,
+  onToggleDetail,
+  expandedBodies,
+  onToggleBody,
+}: {
+  preview: PreviewModel
+  openDetails: Record<string, boolean>
+  onToggleDetail: (id: string, open: boolean) => void
+  expandedBodies: Record<string, boolean>
+  onToggleBody: (id: string, expanded: boolean) => void
+}) {
   return (
     <div className="p-4 space-y-3">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
@@ -1114,10 +1199,18 @@ function PreviewPane({ preview }: { preview: PreviewModel }) {
                 </div>
               )}
 
-              <TranscriptBody body={item.body} />
+              <TranscriptBody
+                body={item.body}
+                initialExpanded={expandedBodies[item.id] ?? false}
+                onExpandedChange={(expanded) => onToggleBody(item.id, expanded)}
+              />
 
               {item.hasDetails && (
-                <details className="mt-3 text-sm text-everforest-grey2" open={!item.isCollapsedByDefault}>
+                <details
+                  className="mt-3 text-sm text-everforest-grey2"
+                  open={openDetails[item.id] ?? !item.isCollapsedByDefault}
+                  onToggle={(event) => onToggleDetail(item.id, (event.currentTarget as HTMLDetailsElement).open)}
+                >
                   <summary className="cursor-pointer select-none text-everforest-blue">Details</summary>
                   <div className="mt-2 space-y-3">
                     {item.details.map((detail, index) => (

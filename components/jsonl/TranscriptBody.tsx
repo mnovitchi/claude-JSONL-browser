@@ -11,10 +11,12 @@ const BODY_MAX_CHARACTERS = 2000
 interface TranscriptBodyProps {
   body: string
   className?: string
+  initialExpanded?: boolean
+  onExpandedChange?: (expanded: boolean) => void
 }
 
-export function TranscriptBody({ body, className }: TranscriptBodyProps) {
-  const [expanded, setExpanded] = useState(false)
+export function TranscriptBody({ body, className, initialExpanded = false, onExpandedChange }: TranscriptBodyProps) {
+  const [expanded, setExpanded] = useState(initialExpanded)
   const [copied, setCopied] = useState(false)
 
   const preview = useMemo(
@@ -48,7 +50,11 @@ export function TranscriptBody({ body, className }: TranscriptBodyProps) {
 
           <button
             type="button"
-            onClick={() => setExpanded((value) => !value)}
+            onClick={() => {
+              const next = !expanded
+              setExpanded(next)
+              onExpandedChange?.(next)
+            }}
             className="min-h-9 px-1 text-everforest-aqua hover:text-everforest-fg transition-colors flex items-center gap-1"
           >
             {expanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
