@@ -7,6 +7,7 @@ export interface FileViewState {
   transcriptScrollTop: number
   compareScrollTop: number
   openDetails: Record<string, boolean>
+  expandedBodies: Record<string, boolean>
   expandedPanes: Record<string, boolean>
 }
 

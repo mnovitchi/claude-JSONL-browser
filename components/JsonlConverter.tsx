@@ -956,6 +956,13 @@ export default function JsonlConverter() {
                           openDetails: { ...store.get(selectedFileId).openDetails, [id]: open },
                         })
                       }}
+                      expandedBodies={selectedFileId ? store.get(selectedFileId).expandedBodies ?? {} : {}}
+                      onToggleBody={(id, expanded) => {
+                        if (!selectedFileId) return
+                        store.patch(selectedFileId, {
+                          expandedBodies: { ...store.get(selectedFileId).expandedBodies, [id]: expanded },
+                        })
+                      }}
                     />
                   ) : (
                     <div className="h-full flex items-center justify-center text-everforest-grey1 text-sm px-6 text-center">
@@ -1139,10 +1146,14 @@ function PreviewPane({
   preview,
   openDetails,
   onToggleDetail,
+  expandedBodies,
+  onToggleBody,
 }: {
   preview: PreviewModel
   openDetails: Record<string, boolean>
   onToggleDetail: (id: string, open: boolean) => void
+  expandedBodies: Record<string, boolean>
+  onToggleBody: (id: string, expanded: boolean) => void
 }) {
   return (
     <div className="p-4 space-y-3">
@@ -1188,7 +1199,11 @@ function PreviewPane({
                 </div>
               )}
 
-              <TranscriptBody body={item.body} />
+              <TranscriptBody
+                body={item.body}
+                initialExpanded={expandedBodies[item.id] ?? false}
+                onExpandedChange={(expanded) => onToggleBody(item.id, expanded)}
+              />
 
               {item.hasDetails && (
                 <details
