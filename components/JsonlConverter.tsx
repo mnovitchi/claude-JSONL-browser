@@ -43,6 +43,11 @@ import { renderPreview } from '@/lib/jsonl/renderPreview'
 import { renderSafeOriginal } from '@/lib/jsonl/renderSafeOriginal'
 import { renderSafeText } from '@/lib/jsonl/renderSafeText'
 import type { ParseResult, PreviewModel, EventRole } from '@/lib/jsonl/types'
+import {
+  useFileViewState,
+  useIsomorphicLayoutEffect,
+  type ViewMode,
+} from '@/lib/jsonl/viewState'
 
 type UploadedFile = File
 
@@ -67,8 +72,6 @@ interface SearchResult {
     text: string
   }>
 }
-
-type ViewMode = 'transcript' | 'compare'
 
 const roleStyles: Record<EventRole, string> = {
   user: 'border-everforest-green/40 bg-everforest-bg-green/40 text-everforest-green',
@@ -117,6 +120,7 @@ export default function JsonlConverter() {
   const [importProjects, setImportProjects] = useState<ClaudeProject[]>([])
   const [importLoading, setImportLoading] = useState(false)
   const [importError, setImportError] = useState('')
+  const store = useFileViewState()
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
@@ -147,8 +151,14 @@ export default function JsonlConverter() {
   }, [editingFileId])
 
   useEffect(() => {
-    setViewMode('transcript')
-  }, [selectedFileId])
+    if (!selectedFileId) return
+    setViewMode(store.get(selectedFileId).viewMode ?? 'transcript')
+  }, [selectedFileId, store])
+
+  const changeViewMode = (mode: ViewMode) => {
+    setViewMode(mode)
+    if (selectedFileId) store.patch(selectedFileId, { viewMode: mode })
+  }
 
   // Resolved after mount so the desktop-only "Import Claude Projects" button
   // renders identically on server and first client paint (no hydration mismatch).
@@ -239,8 +249,9 @@ export default function JsonlConverter() {
   useEffect(() => {
     if (viewMode === 'compare' && !currentFile?.markdown) {
       setViewMode('transcript')
+      if (selectedFileId) store.patch(selectedFileId, { viewMode: 'transcript' })
     }
-  }, [currentFile?.markdown, viewMode])
+  }, [currentFile?.markdown, viewMode, selectedFileId, store])
 
   const handleRenameStart = (fileId: string, currentName: string) => {
     setEditingFileId(fileId)
@@ -873,10 +884,10 @@ export default function JsonlConverter() {
 
                 {currentFile.markdown && (
                   <div className="p-1 rounded-lg bg-everforest-bg1 border border-everforest-bg4 flex items-center gap-1">
-                    <ViewModeButton active={viewMode === 'transcript'} onClick={() => setViewMode('transcript')}>
+                    <ViewModeButton active={viewMode === 'transcript'} onClick={() => changeViewMode('transcript')}>
                       Transcript
                     </ViewModeButton>
-                    <ViewModeButton active={viewMode === 'compare'} onClick={() => setViewMode('compare')}>
+                    <ViewModeButton active={viewMode === 'compare'} onClick={() => changeViewMode('compare')}>
                       Compare
                     </ViewModeButton>
                   </div>
