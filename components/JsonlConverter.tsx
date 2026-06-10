@@ -36,6 +36,7 @@ import {
   type ImportedFile,
 } from '@/lib/tauri/claudeProjects'
 import { CompareView } from '@/components/jsonl/CompareView'
+import { TranscriptBody } from '@/components/jsonl/TranscriptBody'
 import { parseClaudeJsonl } from '@/lib/jsonl/parse'
 import { renderMarkdown } from '@/lib/jsonl/renderMarkdown'
 import { renderPreview } from '@/lib/jsonl/renderPreview'
@@ -1113,7 +1114,7 @@ function PreviewPane({ preview }: { preview: PreviewModel }) {
                 </div>
               )}
 
-              <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-everforest-fg">{item.body}</pre>
+              <TranscriptBody body={item.body} />
 
               {item.hasDetails && (
                 <details className="mt-3 text-sm text-everforest-grey2" open={!item.isCollapsedByDefault}>

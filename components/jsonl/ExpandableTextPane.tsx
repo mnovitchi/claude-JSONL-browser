@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { CheckCircle, Copy, Maximize2, Minimize2 } from 'lucide-react'
-import { createTextPreview } from '@/lib/jsonl/textPreview'
+import { createTextPreview, formatHiddenAmount } from '@/lib/jsonl/textPreview'
 import { cn } from '@/lib/utils'
 
 interface ExpandableTextPaneProps {
@@ -89,12 +89,4 @@ export function ExpandableTextPane({
       </div>
     </section>
   )
-}
-
-function formatHiddenAmount(hiddenLineCount: number, hiddenCharacterCount: number): string {
-  if (hiddenLineCount > 0) {
-    return `${hiddenLineCount.toLocaleString()} line${hiddenLineCount === 1 ? '' : 's'}`
-  }
-
-  return `${hiddenCharacterCount.toLocaleString()} character${hiddenCharacterCount === 1 ? '' : 's'}`
 }
