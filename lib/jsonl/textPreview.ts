@@ -42,3 +42,11 @@ export function createTextPreview(input: string, options: TextPreviewOptions): T
     hiddenCharacterCount: isTruncated ? hiddenCharacterCount : 0,
   }
 }
+
+export function formatHiddenAmount(hiddenLineCount: number, hiddenCharacterCount: number): string {
+  if (hiddenLineCount > 0) {
+    return `${hiddenLineCount.toLocaleString()} line${hiddenLineCount === 1 ? '' : 's'}`
+  }
+
+  return `${hiddenCharacterCount.toLocaleString()} character${hiddenCharacterCount === 1 ? '' : 's'}`
+}
