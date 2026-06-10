@@ -16,6 +16,7 @@ import {
   File,
   FileCheck,
   FileText,
+  FolderDown,
   FolderOpen,
   HardDrive,
   Layers,
@@ -27,6 +28,13 @@ import {
   X,
 } from 'lucide-react'
 import { cn, formatFileDate, formatFileSize, generateFileId } from '@/lib/utils'
+import {
+  isTauri,
+  listClaudeProjects,
+  readProjectFiles,
+  type ClaudeProject,
+  type ImportedFile,
+} from '@/lib/tauri/claudeProjects'
 import { CompareView } from '@/components/jsonl/CompareView'
 import { parseClaudeJsonl } from '@/lib/jsonl/parse'
 import { renderMarkdown } from '@/lib/jsonl/renderMarkdown'
@@ -103,6 +111,11 @@ export default function JsonlConverter() {
   const [editingFileName, setEditingFileName] = useState('')
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('transcript')
+  const [isDesktop, setIsDesktop] = useState(false)
+  const [importModalOpen, setImportModalOpen] = useState(false)
+  const [importProjects, setImportProjects] = useState<ClaudeProject[]>([])
+  const [importLoading, setImportLoading] = useState(false)
+  const [importError, setImportError] = useState('')
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
@@ -135,6 +148,12 @@ export default function JsonlConverter() {
   useEffect(() => {
     setViewMode('transcript')
   }, [selectedFileId])
+
+  // Resolved after mount so the desktop-only "Import Claude Projects" button
+  // renders identically on server and first client paint (no hydration mismatch).
+  useEffect(() => {
+    setIsDesktop(isTauri())
+  }, [])
 
   useEffect(() => {
     if (!searchTerm.trim()) {
@@ -257,29 +276,27 @@ export default function JsonlConverter() {
     if (event.key === 'Escape') handleRenameCancel()
   }
 
-  const handleFilesUpload = async (uploadedFiles: FileList | File[]) => {
-    const incoming = Array.from(uploadedFiles) as UploadedFile[]
-    if (incoming.length === 0) return
+  // Shared ingestion core: classifies sidecars vs conversation logs, merges
+  // sidecars (resetting any already-converted files so tool outputs get picked
+  // up on the next conversion), appends new files, and surfaces a notice. Fed
+  // by both the browser File upload path and the Tauri "Import Claude Projects".
+  const ingestFiles = (records: ImportedFile[]) => {
+    if (records.length === 0) return
 
     setError('')
     setNotice('')
 
-    const sidecarCandidates = incoming.filter(isSidecarFile)
-    const logCandidates = incoming.filter((file) => !isSidecarFile(file) && isConversationLog(file))
+    const sidecarCandidates = records.filter(isSidecarFile)
+    const logCandidates = records.filter((file) => !isSidecarFile(file) && isConversationLog(file))
 
     const newSidecars: Record<string, string> = {}
-    await Promise.all(
-      sidecarCandidates.map(async (file) => {
-        const text = await file.text()
-        const path = file.webkitRelativePath || file.name
-        newSidecars[path] = text
-        newSidecars[file.name] = text
-      }),
-    )
+    sidecarCandidates.forEach((file) => {
+      newSidecars[file.path] = file.text
+      newSidecars[file.name] = file.text
+    })
 
-    const mergedSidecars = { ...sidecarFiles, ...newSidecars }
     if (Object.keys(newSidecars).length > 0) {
-      setSidecarFiles(mergedSidecars)
+      setSidecarFiles((previous) => ({ ...previous, ...newSidecars }))
       setFiles((previous) =>
         previous.map((file) =>
           file.converted
@@ -296,20 +313,18 @@ export default function JsonlConverter() {
       )
     }
 
-    const newFiles: FileData[] = await Promise.all(
-      logCandidates.map(async (file) => ({
-        id: generateFileId(),
-        name: displayName(file),
-        content: await file.text(),
-        markdown: null,
-        fullMarkdown: null,
-        parseResult: null,
-        preview: null,
-        lastModified: file.lastModified,
-        size: file.size,
-        converted: false,
-      })),
-    )
+    const newFiles: FileData[] = logCandidates.map((file) => ({
+      id: generateFileId(),
+      name: displayName(file),
+      content: file.text,
+      markdown: null,
+      fullMarkdown: null,
+      parseResult: null,
+      preview: null,
+      lastModified: file.lastModified,
+      size: file.size,
+      converted: false,
+    }))
 
     if (newFiles.length > 0) {
       setFiles((previous) => [...previous, ...newFiles])
@@ -323,6 +338,23 @@ export default function JsonlConverter() {
     } else if (Object.keys(newSidecars).length > 0) {
       setNotice(`Loaded ${newFiles.length} conversation file${newFiles.length === 1 ? '' : 's'} and sidecar outputs.`)
     }
+  }
+
+  const handleFilesUpload = async (uploadedFiles: FileList | File[]) => {
+    const incoming = Array.from(uploadedFiles) as UploadedFile[]
+    if (incoming.length === 0) return
+
+    const records: ImportedFile[] = await Promise.all(
+      incoming.map(async (file) => ({
+        path: file.webkitRelativePath || file.name,
+        name: file.name,
+        text: await file.text(),
+        lastModified: file.lastModified,
+        size: file.size,
+      })),
+    )
+
+    ingestFiles(records)
   }
 
   const handleDrop = (event: React.DragEvent) => {
@@ -454,6 +486,38 @@ export default function JsonlConverter() {
     setTimeout(() => setError(''), 3000)
   }
 
+  const openImportModal = async () => {
+    setImportModalOpen(true)
+    setImportError('')
+    setImportLoading(true)
+    try {
+      setImportProjects(await listClaudeProjects())
+    } catch (err) {
+      setImportProjects([])
+      setImportError(err instanceof Error ? err.message : 'Could not read ~/.claude/projects.')
+    } finally {
+      setImportLoading(false)
+    }
+  }
+
+  const importProject = async (projectName: string) => {
+    setImportError('')
+    setImportLoading(true)
+    try {
+      const records = await readProjectFiles(projectName)
+      if (records.length === 0) {
+        setImportError('No conversation files found in this project.')
+        return
+      }
+      ingestFiles(records)
+      setImportModalOpen(false)
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Could not read this project.')
+    } finally {
+      setImportLoading(false)
+    }
+  }
+
   return (
     <div className="h-screen bg-everforest-bg0 flex overflow-hidden">
       <aside
@@ -570,6 +634,22 @@ export default function JsonlConverter() {
               className="hidden"
             />
           </div>
+
+          <button
+            type="button"
+            onClick={() => void openImportModal()}
+            disabled={!isDesktop}
+            title={isDesktop ? 'Import sessions from ~/.claude/projects' : 'Requires the desktop app'}
+            className={cn(
+              'w-full mb-3 px-3 py-2 rounded-md text-xs flex items-center justify-center gap-1 border transition-colors',
+              isDesktop
+                ? 'bg-everforest-bg2 text-everforest-purple border-everforest-bg4 hover:bg-everforest-bg3'
+                : 'bg-everforest-bg1 text-everforest-grey1 border-everforest-bg3 opacity-60 cursor-not-allowed',
+            )}
+          >
+            <FolderDown className="w-3.5 h-3.5" />
+            Import Claude Projects
+          </button>
 
           {files.length > 0 && (
             <div className="grid grid-cols-2 gap-2 mb-3">
@@ -821,6 +901,62 @@ export default function JsonlConverter() {
           )}
         </div>
       </section>
+
+      {importModalOpen && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-everforest-bg-dim/80 p-4"
+          onClick={() => !importLoading && setImportModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-md max-h-[80vh] flex flex-col bg-everforest-bg1 border border-everforest-bg4 rounded-lg shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-everforest-bg4">
+              <div className="min-w-0">
+                <h3 className="text-sm text-everforest-fg flex items-center gap-2">
+                  <FolderDown className="w-4 h-4 text-everforest-purple" />
+                  Import Claude Projects
+                </h3>
+                <p className="mt-0.5 text-xs text-everforest-grey1 truncate">From ~/.claude/projects</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setImportModalOpen(false)}
+                className="p-1 text-everforest-grey1 hover:text-everforest-fg transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+              {importLoading ? (
+                <div className="p-6 text-center text-everforest-grey1 text-sm">Loading…</div>
+              ) : importError ? (
+                <div className="p-4 text-center text-everforest-red text-sm">{importError}</div>
+              ) : importProjects.length === 0 ? (
+                <div className="p-6 text-center text-everforest-grey1 text-sm">
+                  No Claude projects found at ~/.claude/projects.
+                </div>
+              ) : (
+                importProjects.map((project) => (
+                  <button
+                    key={project.name}
+                    type="button"
+                    onClick={() => void importProject(project.name)}
+                    className="w-full px-3 py-2 mb-1 rounded-md text-left flex items-center justify-between gap-3 border border-transparent text-everforest-fg hover:bg-everforest-bg2 hover:border-everforest-bg4 transition-colors"
+                  >
+                    <span className="text-xs truncate" title={project.name}>{project.name}</span>
+                    <span className="shrink-0 text-[11px] text-everforest-grey1">
+                      {project.sessionCount} session{project.sessionCount === 1 ? '' : 's'}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1028,28 +1164,23 @@ function handleFileSelect(
   if (isMobile) setSidebarOpen(false)
 }
 
-function isConversationLog(file: UploadedFile): boolean {
-  const path = file.webkitRelativePath || file.name
-  const normalized = path.replace(/\\/g, '/')
+function isConversationLog(file: ImportedFile): boolean {
+  const normalized = file.path.replace(/\\/g, '/')
   if (normalized.includes('/tool-results/')) return false
   return file.name.endsWith('.jsonl') || file.name.endsWith('.json')
 }
 
-function isSidecarFile(file: UploadedFile): boolean {
-  const path = (file.webkitRelativePath || file.name).replace(/\\/g, '/')
-  return file.name.endsWith('.json') && (path.includes('/tool-results/') || file.name.startsWith('toolu_'))
+function isSidecarFile(file: ImportedFile): boolean {
+  const normalized = file.path.replace(/\\/g, '/')
+  return file.name.endsWith('.json') && (normalized.includes('/tool-results/') || file.name.startsWith('toolu_'))
 }
 
-function displayName(file: UploadedFile): string {
-  return file.webkitRelativePath || file.name
+function displayName(file: ImportedFile): string {
+  return file.path
 }
 
 function baseName(fileName: string): string {
   return fileName.replace(/\.[^/.]+$/, '').replace(/[^\w.-]+/g, '-')
-}
-
-function isTauri(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 }
 
 async function downloadMarkdown(fileName: string, content: string) {

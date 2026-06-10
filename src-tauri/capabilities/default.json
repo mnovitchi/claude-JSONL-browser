@@ -11,6 +11,18 @@
     {
       "identifier": "fs:allow-write-text-file",
       "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "fs:allow-read-dir",
+      "allow": [{ "path": "$HOME/.claude/projects" }, { "path": "$HOME/.claude/projects/**" }]
+    },
+    {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [{ "path": "$HOME/.claude/projects/**" }]
+    },
+    {
+      "identifier": "fs:allow-stat",
+      "allow": [{ "path": "$HOME/.claude/projects/**" }]
     }
   ]
 }
