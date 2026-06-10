@@ -474,6 +474,7 @@ export default function JsonlConverter() {
 
   const deleteFile = (fileId: string) => {
     setFiles((previous) => previous.filter((file) => file.id !== fileId))
+    store.remove(fileId)
     if (selectedFileId === fileId) {
       const remaining = files.filter((file) => file.id !== fileId)
       setSelectedFileId(remaining[0]?.id || null)
@@ -487,6 +488,7 @@ export default function JsonlConverter() {
     setSearchResults({})
     setNotice('')
     setError('')
+    store.clear()
   }
 
   const saveMarkdown = async (fileName: string, content: string) => {
