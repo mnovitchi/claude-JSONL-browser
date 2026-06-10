@@ -34,7 +34,7 @@ export function ExpandableTextPane({
   useEffect(() => {
     setExpanded(initialExpanded)
     setCopied(false)
-  }, [resetKey])
+  }, [resetKey, initialExpanded])
 
   const preview = useMemo(
     () => createTextPreview(text, { expanded, maxLines, maxCharacters }),
