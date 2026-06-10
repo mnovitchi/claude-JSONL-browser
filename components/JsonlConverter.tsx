@@ -938,7 +938,16 @@ export default function JsonlConverter() {
                   className="w-full flex-1 min-h-[220px] bg-everforest-bg2 border border-everforest-bg4 rounded-lg overflow-auto custom-scrollbar"
                 >
                   {currentFile.preview ? (
-                    <PreviewPane preview={currentFile.preview} />
+                    <PreviewPane
+                      preview={currentFile.preview}
+                      openDetails={selectedFileId ? store.get(selectedFileId).openDetails ?? {} : {}}
+                      onToggleDetail={(id, open) => {
+                        if (!selectedFileId) return
+                        store.patch(selectedFileId, {
+                          openDetails: { ...store.get(selectedFileId).openDetails, [id]: open },
+                        })
+                      }}
+                    />
                   ) : (
                     <div className="h-full flex items-center justify-center text-everforest-grey1 text-sm px-6 text-center">
                       Convert the file to see a clean transcript.
@@ -1117,7 +1126,15 @@ function StatusMessage({ error, notice }: { error?: string; notice?: string }) {
   )
 }
 
-function PreviewPane({ preview }: { preview: PreviewModel }) {
+function PreviewPane({
+  preview,
+  openDetails,
+  onToggleDetail,
+}: {
+  preview: PreviewModel
+  openDetails: Record<string, boolean>
+  onToggleDetail: (id: string, open: boolean) => void
+}) {
   return (
     <div className="p-4 space-y-3">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
@@ -1165,7 +1182,11 @@ function PreviewPane({ preview }: { preview: PreviewModel }) {
               <TranscriptBody body={item.body} />
 
               {item.hasDetails && (
-                <details className="mt-3 text-sm text-everforest-grey2" open={!item.isCollapsedByDefault}>
+                <details
+                  className="mt-3 text-sm text-everforest-grey2"
+                  open={openDetails[item.id] ?? !item.isCollapsedByDefault}
+                  onToggle={(event) => onToggleDetail(item.id, (event.currentTarget as HTMLDetailsElement).open)}
+                >
                   <summary className="cursor-pointer select-none text-everforest-blue">Details</summary>
                   <div className="mt-2 space-y-3">
                     {item.details.map((detail, index) => (
