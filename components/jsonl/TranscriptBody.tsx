@@ -110,9 +110,9 @@ export function TranscriptBody({ body, images = [], className, initialExpanded =
             return (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                key={index}
+                key={`${image.mediaType}-${index}`}
                 src={src}
-                alt={image.mediaType}
+                alt="Tool result image"
                 loading="lazy"
                 onClick={() => setLightboxSrc(src)}
                 className="max-h-80 max-w-full cursor-zoom-in rounded-md border border-everforest-bg4"
