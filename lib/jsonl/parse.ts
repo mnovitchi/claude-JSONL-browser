@@ -404,8 +404,18 @@ function renderToolResult(
   }
 
   if (typeof content === 'string') {
+    const decoded = decodeJsonString(content)
+
+    if (typeof decoded !== 'string') {
+      return {
+        body: '```json\n' + stringifySafe(redactLargeFields(decoded)) + '\n```',
+        chips,
+        details: block.toolUseResult ? [{ label: 'Tool result metadata', content: stringifySafe(block.toolUseResult), language: 'json' }] : [],
+      }
+    }
+
     return {
-      body: String(decodeJsonString(content)),
+      body: decoded,
       chips,
       details: block.toolUseResult ? [{ label: 'Tool result metadata', content: stringifySafe(block.toolUseResult), language: 'json' }] : [],
     }

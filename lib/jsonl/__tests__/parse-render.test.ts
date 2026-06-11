@@ -102,6 +102,34 @@ describe('Claude JSONL conversion', () => {
     expect(full).toContain('"future-record"')
   })
 
+  it('renders tool results whose content is a JSON object string instead of [object Object]', () => {
+    const toolResultContent = JSON.stringify(
+      { Result: 'Success', Code: 'ToolResult', Data: { success: true, projectDirectory: 'C:\\repos\\Demo' } },
+      null,
+      2,
+    )
+
+    const jsonl = [
+      line({
+        type: 'user',
+        timestamp: '2026-04-01T07:33:20.000Z',
+        sessionId: 'session-obj',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 'toolu_bash', content: toolResultContent }],
+        },
+        toolUseResult: { stdout: toolResultContent, stderr: '', interrupted: false },
+      }),
+    ].join('\n')
+
+    const result = parseClaudeJsonl(jsonl)
+    const readable = renderMarkdown(result, 'readable')
+
+    expect(readable).not.toContain('[object Object]')
+    expect(readable).toContain('"Result": "Success"')
+    expect(readable).toContain('projectDirectory')
+  })
+
   it('tracks persisted sidecar results and prevents image base64 from flooding readable output', () => {
     const sidecarPath = '/Users/linda/.claude/projects/demo/session/tool-results/toolu_big.json'
     const jsonl = [
