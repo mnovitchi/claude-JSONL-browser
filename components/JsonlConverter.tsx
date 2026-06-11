@@ -102,6 +102,7 @@ export default function JsonlConverter() {
   const [isDesktop, setIsDesktop] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [clearOnImport, setClearOnImport] = useState(true)
+  const [pendingFolderRecords, setPendingFolderRecords] = useState<ImportedFile[] | null>(null)
   const [importProjects, setImportProjects] = useState<ClaudeProject[]>([])
   const [importLoading, setImportLoading] = useState(false)
   const [importError, setImportError] = useState('')
@@ -281,7 +282,7 @@ export default function JsonlConverter() {
     else if (result.notice) setNotice(result.notice)
   }
 
-  const handleFilesUpload = async (uploadedFiles: FileList | File[]) => {
+  const handleFilesUpload = async (uploadedFiles: FileList | File[], { fromFolder = false }: { fromFolder?: boolean } = {}) => {
     const incoming = Array.from(uploadedFiles) as UploadedFile[]
     if (incoming.length === 0) return
 
@@ -294,6 +295,11 @@ export default function JsonlConverter() {
         size: file.size,
       })),
     )
+
+    if (fromFolder && files.length > 0) {
+      setPendingFolderRecords(records)
+      return
+    }
 
     ingestFiles(records)
   }
@@ -571,7 +577,7 @@ export default function JsonlConverter() {
               type="file"
               multiple
               {...directoryInputProps}
-              onChange={(event) => event.target.files && void handleFilesUpload(event.target.files)}
+              onChange={(event) => event.target.files && void handleFilesUpload(event.target.files, { fromFolder: true })}
               className="hidden"
             />
           </div>
@@ -906,6 +912,60 @@ export default function JsonlConverter() {
                 />
                 Clear loaded sessions before importing
               </label>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingFolderRecords && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-everforest-bg-dim/80 p-4"
+          onClick={() => setPendingFolderRecords(null)}
+        >
+          <div
+            className="w-full max-w-sm flex flex-col bg-everforest-bg1 border border-everforest-bg4 rounded-lg shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-everforest-bg4">
+              <h3 className="text-sm text-everforest-fg flex items-center gap-2">
+                <FolderOpen className="w-4 h-4 text-everforest-aqua" />
+                Loading a new project folder
+              </h3>
+            </div>
+            <div className="px-4 py-4 text-xs text-everforest-grey1">
+              {files.length} session{files.length === 1 ? '' : 's'} already loaded. Clear them before loading?
+            </div>
+            <div className="flex flex-col gap-2 px-4 pb-4">
+              <button
+                type="button"
+                autoFocus
+                onClick={() => {
+                  if (!pendingFolderRecords) return
+                  ingestFiles(pendingFolderRecords, { replace: true })
+                  setPendingFolderRecords(null)
+                }}
+                className="px-3 py-2 rounded-md text-xs bg-everforest-aqua/15 text-everforest-aqua border border-everforest-aqua/40 hover:bg-everforest-aqua/25 transition-colors"
+              >
+                Clear &amp; load
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!pendingFolderRecords) return
+                  ingestFiles(pendingFolderRecords)
+                  setPendingFolderRecords(null)
+                }}
+                className="px-3 py-2 rounded-md text-xs bg-everforest-bg2 text-everforest-fg border border-everforest-bg4 hover:bg-everforest-bg3 transition-colors"
+              >
+                Keep &amp; add
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingFolderRecords(null)}
+                className="px-3 py-2 rounded-md text-xs text-everforest-grey1 hover:text-everforest-fg transition-colors"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
