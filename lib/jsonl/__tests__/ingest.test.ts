@@ -97,6 +97,14 @@ describe('computeIngest', () => {
     expect(r.files).toEqual([])
   })
 
+  it('replace mode with only sidecars reports the no-logs error', () => {
+    const prev = [existing('a')]
+    const r = computeIngest(prev, { old: 'v' }, 'a', [sidecar('proj/tool-results/toolu_1.json')], counter(), { replace: true })
+    expect(r.files).toEqual([])
+    expect(r.error).toBe('No JSONL files found.')
+    expect(r.notice).toBe('')
+  })
+
   it('returns a no-op result for empty records', () => {
     const prev = [existing('a')]
     const r = computeIngest(prev, { old: 'v' }, 'a', [], counter())

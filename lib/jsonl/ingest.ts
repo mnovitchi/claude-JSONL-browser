@@ -90,6 +90,8 @@ export function computeIngest(
   let resultSelectedId: string | null
 
   if (replace) {
+    // In replace mode the entire prior state is discarded, so sidecars are fully
+    // replaced too — prior converted files no longer exist and need no invalidation.
     sidecars = newSidecars
     files = newFiles
     resultSelectedId = newFiles[0]?.id ?? null
@@ -109,10 +111,12 @@ export function computeIngest(
 
   let notice = ''
   let error = ''
-  if (newFiles.length === 0 && hasNewSidecars) {
-    notice = 'Loaded sidecar files. Convert the JSONL files again to include full tool outputs.'
-  } else if (newFiles.length === 0) {
-    error = 'No JSONL files found.'
+  if (newFiles.length === 0) {
+    if (!replace && hasNewSidecars) {
+      notice = 'Loaded sidecar files. Convert the JSONL files again to include full tool outputs.'
+    } else {
+      error = 'No JSONL files found.'
+    }
   } else if (hasNewSidecars) {
     notice = `Loaded ${newFiles.length} conversation file${newFiles.length === 1 ? '' : 's'} and sidecar outputs.`
   }
