@@ -253,7 +253,7 @@ function progressToEvent(
     title: 'Agent progress',
     timestamp: record.timestamp || nested?.timestamp,
     sessionId: record.sessionId,
-    body: rendered.body || progressFallback(record),
+    body: rendered.body || (images.length > 0 ? '' : progressFallback(record)),
     chips: [agentId, record.data?.type].filter(Boolean).map(String),
     details: [
       ...rendered.details,
