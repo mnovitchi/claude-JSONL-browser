@@ -38,6 +38,7 @@ import {
 import { CompareView } from '@/components/jsonl/CompareView'
 import { TranscriptBody } from '@/components/jsonl/TranscriptBody'
 import { parseClaudeJsonl } from '@/lib/jsonl/parse'
+import { computeIngest, type FileData } from '@/lib/jsonl/ingest'
 import { renderMarkdown } from '@/lib/jsonl/renderMarkdown'
 import { renderPreview } from '@/lib/jsonl/renderPreview'
 import { renderSafeOriginal } from '@/lib/jsonl/renderSafeOriginal'
@@ -50,20 +51,6 @@ import {
 } from '@/lib/jsonl/viewState'
 
 type UploadedFile = File
-
-interface FileData {
-  id: string
-  name: string
-  content: string
-  markdown: string | null
-  fullMarkdown: string | null
-  parseResult: ParseResult | null
-  preview: PreviewModel | null
-  lastModified: number
-  size: number
-  converted: boolean
-  error?: string
-}
 
 interface SearchResult {
   matches: number
@@ -117,6 +104,8 @@ export default function JsonlConverter() {
   const [viewMode, setViewMode] = useState<ViewMode>('transcript')
   const [isDesktop, setIsDesktop] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
+  const [clearOnImport, setClearOnImport] = useState(true)
+  const [pendingFolderRecords, setPendingFolderRecords] = useState<ImportedFile[] | null>(null)
   const [importProjects, setImportProjects] = useState<ClaudeProject[]>([])
   const [importLoading, setImportLoading] = useState(false)
   const [importError, setImportError] = useState('')
@@ -280,6 +269,15 @@ export default function JsonlConverter() {
     }
   }, [currentFile?.markdown, viewMode, selectedFileId, store])
 
+  useEffect(() => {
+    if (!pendingFolderRecords) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPendingFolderRecords(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [pendingFolderRecords])
+
   const handleRenameStart = (fileId: string, currentName: string) => {
     setEditingFileId(fileId)
     setEditingFileName(currentName)
@@ -315,71 +313,23 @@ export default function JsonlConverter() {
     if (event.key === 'Escape') handleRenameCancel()
   }
 
-  // Shared ingestion core: classifies sidecars vs conversation logs, merges
-  // sidecars (resetting any already-converted files so tool outputs get picked
-  // up on the next conversion), appends new files, and surfaces a notice. Fed
-  // by both the browser File upload path and the Tauri "Import Claude Projects".
-  const ingestFiles = (records: ImportedFile[]) => {
+  const ingestFiles = (records: ImportedFile[], { replace = false }: { replace?: boolean } = {}) => {
     if (records.length === 0) return
 
     setError('')
     setNotice('')
 
-    const sidecarCandidates = records.filter(isSidecarFile)
-    const logCandidates = records.filter((file) => !isSidecarFile(file) && isConversationLog(file))
+    const result = computeIngest(files, sidecarFiles, selectedFileId, records, generateFileId, { replace })
 
-    const newSidecars: Record<string, string> = {}
-    sidecarCandidates.forEach((file) => {
-      newSidecars[file.path] = file.text
-      newSidecars[file.name] = file.text
-    })
+    setSidecarFiles(result.sidecars)
+    setFiles(result.files)
+    setSelectedFileId(result.selectedFileId)
 
-    if (Object.keys(newSidecars).length > 0) {
-      setSidecarFiles((previous) => ({ ...previous, ...newSidecars }))
-      setFiles((previous) =>
-        previous.map((file) =>
-          file.converted
-            ? {
-                ...file,
-                converted: false,
-                markdown: null,
-                fullMarkdown: null,
-                parseResult: null,
-                preview: null,
-              }
-            : file,
-        ),
-      )
-    }
-
-    const newFiles: FileData[] = logCandidates.map((file) => ({
-      id: generateFileId(),
-      name: displayName(file),
-      content: file.text,
-      markdown: null,
-      fullMarkdown: null,
-      parseResult: null,
-      preview: null,
-      lastModified: file.lastModified,
-      size: file.size,
-      converted: false,
-    }))
-
-    if (newFiles.length > 0) {
-      setFiles((previous) => [...previous, ...newFiles])
-      if (!selectedFileId) setSelectedFileId(newFiles[0].id)
-    }
-
-    if (newFiles.length === 0 && Object.keys(newSidecars).length > 0) {
-      setNotice('Loaded sidecar files. Convert the JSONL files again to include full tool outputs.')
-    } else if (newFiles.length === 0) {
-      showError('No JSONL files found.')
-    } else if (Object.keys(newSidecars).length > 0) {
-      setNotice(`Loaded ${newFiles.length} conversation file${newFiles.length === 1 ? '' : 's'} and sidecar outputs.`)
-    }
+    if (result.error) showError(result.error)
+    else if (result.notice) setNotice(result.notice)
   }
 
-  const handleFilesUpload = async (uploadedFiles: FileList | File[]) => {
+  const handleFilesUpload = async (uploadedFiles: FileList | File[], { fromFolder = false }: { fromFolder?: boolean } = {}) => {
     const incoming = Array.from(uploadedFiles) as UploadedFile[]
     if (incoming.length === 0) return
 
@@ -392,6 +342,11 @@ export default function JsonlConverter() {
         size: file.size,
       })),
     )
+
+    if (fromFolder && files.length > 0) {
+      setPendingFolderRecords(records)
+      return
+    }
 
     ingestFiles(records)
   }
@@ -550,7 +505,7 @@ export default function JsonlConverter() {
         setImportError('No conversation files found in this project.')
         return
       }
-      ingestFiles(records)
+      ingestFiles(records, { replace: clearOnImport })
       setImportModalOpen(false)
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'Could not read this project.')
@@ -671,7 +626,10 @@ export default function JsonlConverter() {
               type="file"
               multiple
               {...directoryInputProps}
-              onChange={(event) => event.target.files && void handleFilesUpload(event.target.files)}
+              onChange={(event) => {
+                if (event.target.files) void handleFilesUpload(event.target.files, { fromFolder: true })
+                event.target.value = ''
+              }}
               className="hidden"
             />
           </div>
@@ -1028,6 +986,72 @@ export default function JsonlConverter() {
                 ))
               )}
             </div>
+
+            <div className="px-4 py-3 border-t border-everforest-bg4">
+              <label className="flex items-center gap-2 text-xs text-everforest-fg cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={clearOnImport}
+                  onChange={(event) => setClearOnImport(event.target.checked)}
+                  className="accent-everforest-purple"
+                />
+                Clear loaded sessions before importing
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingFolderRecords && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-everforest-bg-dim/80 p-4"
+          onClick={() => setPendingFolderRecords(null)}
+        >
+          <div
+            className="w-full max-w-sm flex flex-col bg-everforest-bg1 border border-everforest-bg4 rounded-lg shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-everforest-bg4">
+              <h3 className="text-sm text-everforest-fg flex items-center gap-2">
+                <FolderOpen className="w-4 h-4 text-everforest-aqua" />
+                Loading a new project folder
+              </h3>
+            </div>
+            <div className="px-4 py-4 text-xs text-everforest-grey1">
+              {files.length} session{files.length === 1 ? '' : 's'} already loaded. Clear them before loading?
+            </div>
+            <div className="flex flex-col gap-2 px-4 pb-4">
+              <button
+                type="button"
+                autoFocus
+                onClick={() => {
+                  if (!pendingFolderRecords) return
+                  ingestFiles(pendingFolderRecords, { replace: true })
+                  setPendingFolderRecords(null)
+                }}
+                className="px-3 py-2 rounded-md text-xs bg-everforest-aqua/15 text-everforest-aqua border border-everforest-aqua/40 hover:bg-everforest-aqua/25 transition-colors"
+              >
+                Clear &amp; load
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!pendingFolderRecords) return
+                  ingestFiles(pendingFolderRecords)
+                  setPendingFolderRecords(null)
+                }}
+                className="px-3 py-2 rounded-md text-xs bg-everforest-bg2 text-everforest-fg border border-everforest-bg4 hover:bg-everforest-bg3 transition-colors"
+              >
+                Keep &amp; add
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingFolderRecords(null)}
+                className="px-3 py-2 rounded-md text-xs text-everforest-grey1 hover:text-everforest-fg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1256,21 +1280,6 @@ function handleFileSelect(
 ) {
   setSelectedFileId(fileId)
   if (isMobile) setSidebarOpen(false)
-}
-
-function isConversationLog(file: ImportedFile): boolean {
-  const normalized = file.path.replace(/\\/g, '/')
-  if (normalized.includes('/tool-results/')) return false
-  return file.name.endsWith('.jsonl') || file.name.endsWith('.json')
-}
-
-function isSidecarFile(file: ImportedFile): boolean {
-  const normalized = file.path.replace(/\\/g, '/')
-  return file.name.endsWith('.json') && (normalized.includes('/tool-results/') || file.name.startsWith('toolu_'))
-}
-
-function displayName(file: ImportedFile): string {
-  return file.path
 }
 
 function baseName(fileName: string): string {
