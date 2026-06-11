@@ -371,6 +371,29 @@ describe('Claude JSONL conversion', () => {
     expect(preview.items[0].images).toEqual([{ mediaType: 'image/jpeg', data: 'aW1n' }])
   })
 
+  it('embeds tool-result images as data URIs in the markdown export', () => {
+    const jsonl = line({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_export',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'QUJD' } },
+            ],
+          },
+        ],
+      },
+    })
+
+    const markdown = renderMarkdown(parseClaudeJsonl(jsonl), 'readable')
+
+    expect(markdown).toContain('![image/png](data:image/png;base64,QUJD)')
+    expect(markdown).not.toContain('_No displayable content._')
+  })
+
   it('creates collapsed previews that can expand back to the full safe text', () => {
     const text = Array.from({ length: 6 }, (_, index) => `line ${index + 1}`).join('\n')
 
