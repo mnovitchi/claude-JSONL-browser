@@ -394,6 +394,18 @@ describe('Claude JSONL conversion', () => {
     expect(markdown).not.toContain('_No displayable content._')
   })
 
+  it('redacts small data-URI image payloads from display text', () => {
+    const tinyImage = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC'
+    const markdown = `## Tool result\n\n![image/png](data:image/png;base64,${tinyImage})`
+
+    const safeText = renderSafeText(markdown)
+
+    expect(safeText).not.toContain(tinyImage)
+    expect(safeText).toContain('[base64 omitted:')
+    // the data-URI prefix should remain so the line is still recognizable as an image
+    expect(safeText).toContain('data:image/png;base64,')
+  })
+
   it('creates collapsed previews that can expand back to the full safe text', () => {
     const text = Array.from({ length: 6 }, (_, index) => `line ${index + 1}`).join('\n')
 
