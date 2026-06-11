@@ -98,6 +98,7 @@ export interface PreviewItem {
   body: string
   chips: string[]
   details: EventDetail[]
+  images: TranscriptImage[]
   hasDetails: boolean
   detailCount: number
   isCollapsedByDefault: boolean

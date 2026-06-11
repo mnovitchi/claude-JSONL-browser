@@ -349,6 +349,28 @@ describe('Claude JSONL conversion', () => {
     expect(event.body).toContain('[Image:')
   })
 
+  it('forwards tool-result images onto the preview model', () => {
+    const jsonl = line({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_jpeg',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'aW1n' } },
+            ],
+          },
+        ],
+      },
+    })
+
+    const preview = renderPreview(parseClaudeJsonl(jsonl))
+
+    expect(preview.items[0].images).toEqual([{ mediaType: 'image/jpeg', data: 'aW1n' }])
+  })
+
   it('creates collapsed previews that can expand back to the full safe text', () => {
     const text = Array.from({ length: 6 }, (_, index) => `line ${index + 1}`).join('\n')
 
