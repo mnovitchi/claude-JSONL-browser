@@ -23,6 +23,11 @@ export interface ParseOptions {
   sidecarFiles?: SidecarFileMap
 }
 
+export interface TranscriptImage {
+  mediaType: string
+  data: string
+}
+
 export interface EventDetail {
   label: string
   content: string
@@ -40,6 +45,7 @@ export interface TranscriptEvent {
   body: string
   chips: string[]
   details: EventDetail[]
+  images: TranscriptImage[]
   raw: unknown
   isCollapsedByDefault?: boolean
 }

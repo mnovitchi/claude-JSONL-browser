@@ -5,6 +5,7 @@ import type {
   RawPreservedRecord,
   SidecarReference,
   TranscriptEvent,
+  TranscriptImage,
 } from './types'
 
 interface ParsedLine {
@@ -12,6 +13,13 @@ interface ParsedLine {
   rawLine: string
   record?: any
   error?: string
+}
+
+interface RenderHelpers {
+  sidecarFiles: Record<string, string>
+  sidecars: SidecarReference[]
+  warnings: string[]
+  images: TranscriptImage[]
 }
 
 const METADATA_ONLY_TYPES = new Set(['queue-operation', 'file-history-snapshot'])
@@ -123,13 +131,16 @@ function recordToEvent(
     timestamp: record.timestamp,
     sessionId: record.sessionId,
     raw: record,
+    images: [] as TranscriptImage[],
   }
 
   if (record.type === 'user' || record.type === 'assistant') {
+    const images: TranscriptImage[] = []
     const rendered = renderContent(record.message?.content, record.type, {
       sidecarFiles: options.sidecarFiles || {},
       sidecars,
       warnings,
+      images,
     })
     const title = record.type === 'user' ? 'User' : 'Assistant'
 
@@ -137,9 +148,10 @@ function recordToEvent(
       ...base,
       role: record.type,
       title,
-      body: rendered.body || emptyMessageText(record.type),
+      body: rendered.body || (images.length > 0 ? '' : emptyMessageText(record.type)),
       chips: rendered.chips,
       details: appendRawDetails(rendered.details, record.toolUseResult),
+      images,
     }
   }
 
@@ -221,11 +233,13 @@ function progressToEvent(
   warnings: string[],
 ): TranscriptEvent {
   const nested = record.data?.message
+  const images: TranscriptImage[] = []
   const rendered = nested?.message
     ? renderContent(nested.message.content, nested.type === 'user' ? 'user' : 'assistant', {
         sidecarFiles: options.sidecarFiles || {},
         sidecars,
         warnings,
+        images,
       })
     : { body: progressFallback(record), chips: [] as string[], details: [] as EventDetail[] }
 
@@ -246,6 +260,7 @@ function progressToEvent(
       { label: 'Raw progress record', content: stringifySafe(record), language: 'json' },
     ],
     raw: record,
+    images,
     isCollapsedByDefault: true,
   }
 }
@@ -253,11 +268,7 @@ function progressToEvent(
 function renderContent(
   content: unknown,
   context: 'user' | 'assistant',
-  helpers: {
-    sidecarFiles: Record<string, string>
-    sidecars: SidecarReference[]
-    warnings: string[]
-  },
+  helpers: RenderHelpers,
 ): { body: string; chips: string[]; details: EventDetail[] } {
   const decoded = decodeJsonString(content)
   const chunks: string[] = []
@@ -287,11 +298,7 @@ function renderContent(
 function renderBlock(
   block: any,
   context: 'user' | 'assistant',
-  helpers: {
-    sidecarFiles: Record<string, string>
-    sidecars: SidecarReference[]
-    warnings: string[]
-  },
+  helpers: RenderHelpers,
 ): { body: string; chips: string[]; details: EventDetail[] } {
   if (typeof block === 'string') {
     return { body: decodeJsonString(block) as string, chips: [], details: [] }
@@ -358,11 +365,7 @@ function renderBlock(
 
 function renderToolResult(
   block: any,
-  helpers: {
-    sidecarFiles: Record<string, string>
-    sidecars: SidecarReference[]
-    warnings: string[]
-  },
+  helpers: RenderHelpers,
 ): { body: string; chips: string[]; details: EventDetail[] } {
   const content = block.content
   const sidecarPath = typeof content === 'string' ? extractSidecarPath(content) : undefined
@@ -422,7 +425,18 @@ function renderToolResult(
   }
 
   if (Array.isArray(content)) {
-    const rendered = content.map((item) => renderBlock(item, 'user', helpers))
+    const rendered = content.map((item) => {
+      const image = extractBase64Image(item)
+      if (image) {
+        helpers.images.push(image)
+        return {
+          body: '',
+          chips: ['image'],
+          details: [{ label: 'Image metadata', content: stringifySafe(redactLargeFields(item)), language: 'json' }],
+        }
+      }
+      return renderBlock(item, 'user', helpers)
+    })
     return {
       body: cleanMarkdown(rendered.map((item) => item.body).filter(Boolean).join('\n\n')),
       chips: unique([...chips, ...rendered.flatMap((item) => item.chips)]),
@@ -431,6 +445,15 @@ function renderToolResult(
   }
 
   if (content && typeof content === 'object') {
+    const image = extractBase64Image(content)
+    if (image) {
+      helpers.images.push(image)
+      return {
+        body: '',
+        chips: [...chips, 'image'],
+        details: [{ label: 'Image metadata', content: stringifySafe(redactLargeFields(content)), language: 'json' }],
+      }
+    }
     return {
       body: '```json\n' + stringifySafe(redactLargeFields(content)) + '\n```',
       chips,
@@ -443,11 +466,7 @@ function renderToolResult(
 
 function renderSidecarContent(
   content: string,
-  helpers: {
-    sidecarFiles: Record<string, string>
-    sidecars: SidecarReference[]
-    warnings: string[]
-  },
+  helpers: RenderHelpers,
 ): string {
   try {
     const parsed = JSON.parse(content)
@@ -573,6 +592,18 @@ function decodeJsonString(value: unknown): unknown {
       return value
     }
   }
+}
+
+function extractBase64Image(block: any): TranscriptImage | null {
+  if (!block || typeof block !== 'object') return null
+  if (block.type !== 'image') return null
+  if (block.source?.type !== 'base64') return null
+
+  const data = block.source?.data
+  if (typeof data !== 'string' || data.length === 0) return null
+
+  const mediaType = block.source?.media_type || block.source?.mediaType || 'image'
+  return { mediaType, data }
 }
 
 function redactLargeFields(value: unknown): unknown {

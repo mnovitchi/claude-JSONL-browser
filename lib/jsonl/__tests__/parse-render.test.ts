@@ -283,6 +283,72 @@ describe('Claude JSONL conversion', () => {
     expect(safeText).not.toContain(opaquePayload)
   })
 
+  it('extracts a base64 image that is the direct result of a tool call', () => {
+    const jsonl = line({
+      type: 'user',
+      timestamp: '2026-04-01T08:00:00.000Z',
+      sessionId: 'session-img',
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_read_png',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'aGVsbG8taW1hZ2U=' } },
+            ],
+          },
+        ],
+      },
+    })
+
+    const event = parseClaudeJsonl(jsonl).events[0]
+
+    expect(event.images).toEqual([{ mediaType: 'image/png', data: 'aGVsbG8taW1hZ2U=' }])
+    expect(event.body).toBe('')
+    expect(event.body).not.toContain('aGVsbG8taW1hZ2U=')
+  })
+
+  it('keeps the text placeholder for images that are not tool-call results', () => {
+    const jsonl = line({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'cGFzdGVkLWltYWdl' } },
+        ],
+      },
+    })
+
+    const event = parseClaudeJsonl(jsonl).events[0]
+
+    expect(event.body).toContain('[Image: image/png')
+    expect(event.images).toEqual([])
+  })
+
+  it('does not extract a non-base64 image inside a tool result', () => {
+    const jsonl = line({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_url',
+            content: [
+              { type: 'image', source: { type: 'url', url: 'https://example.com/a.png' } },
+            ],
+          },
+        ],
+      },
+    })
+
+    const event = parseClaudeJsonl(jsonl).events[0]
+
+    expect(event.images).toEqual([])
+    expect(event.body).toContain('[Image:')
+  })
+
   it('creates collapsed previews that can expand back to the full safe text', () => {
     const text = Array.from({ length: 6 }, (_, index) => `line ${index + 1}`).join('\n')
 
