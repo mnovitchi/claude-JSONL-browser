@@ -231,6 +231,15 @@ export default function JsonlConverter() {
     }
   }, [currentFile?.markdown, viewMode])
 
+  useEffect(() => {
+    if (!pendingFolderRecords) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPendingFolderRecords(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [pendingFolderRecords])
+
   const handleRenameStart = (fileId: string, currentName: string) => {
     setEditingFileId(fileId)
     setEditingFileName(currentName)
@@ -577,7 +586,10 @@ export default function JsonlConverter() {
               type="file"
               multiple
               {...directoryInputProps}
-              onChange={(event) => event.target.files && void handleFilesUpload(event.target.files, { fromFolder: true })}
+              onChange={(event) => {
+                if (event.target.files) void handleFilesUpload(event.target.files, { fromFolder: true })
+                event.target.value = ''
+              }}
               className="hidden"
             />
           </div>
