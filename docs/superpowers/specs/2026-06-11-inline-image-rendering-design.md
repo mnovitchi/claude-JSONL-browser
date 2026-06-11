@@ -5,35 +5,36 @@
 
 ## Problem
 
-Image tool results (and user-pasted images) currently render as a text
-placeholder: `[Image: image/png, base64 omitted (105440 chars)]`. The base64
-payload is discarded from the body at parse time (`parse.ts` `renderBlock`
-image branch) and survives only inside `event.raw` and a redacted `details`
-entry. Users cannot see the actual image.
+When a tool call returns an image (e.g. the Read tool reading a PNG), it
+currently renders as a text placeholder:
+`[Image: image/png, base64 omitted (105440 chars)]`. The base64 payload is
+discarded from the body at parse time (`parse.ts` `renderBlock` image branch)
+and survives only inside `event.raw` and a redacted `details` entry. Users
+cannot see the actual image.
 
 ## Goal
 
-Render image blocks inline, at their exact position among the surrounding
-text, scaled to a sensible display size, with click-to-expand for full-size
-viewing. Images should also survive markdown export.
+Render an image that is the **direct result of a tool call** inline in the
+transcript, scaled to a sensible display size, with click-to-expand for
+full-size viewing. The image should also survive markdown export.
 
 ## Decisions (locked)
 
-- **Placement:** inline at the exact position within the message/tool-result
-  (not a gallery below the text).
-- **Scope:** all image blocks — tool-result images *and* user-pasted images
-  (the same `renderBlock` code path handles both).
+- **Scope:** only images that are the **direct result of a tool call** — i.e. a
+  base64 image block inside a `tool_result` content array (the Read-an-image
+  case). User-pasted images and images in any other context keep today's text
+  placeholder and are out of scope.
+- **Placement:** images render as a block beneath the tool-result's text body.
+  Because a tool-result image is standalone (no interleaved prose), there is no
+  need to position it inline among text — so **no marker protocol is required**.
 - **Scaling:** scaled thumbnail with click-to-expand into a lightbox.
 - **Export:** embed images as data-URIs in the markdown export.
-- **Approach:** a Private-Use-Area marker spliced into the plain-text body plus
-  a structured image list — *not* a full markdown renderer. Rationale: the
-  marker approach is surgical (no new dependency, leaves the plain-text reading
-  model and the line/char truncation in `TranscriptBody` untouched, tiny
-  security surface). A full markdown renderer was rejected for this task because
-  it implies a transcript-wide visual redesign, a new dependency
-  (`react-markdown` + `remark-gfm` + sanitizer), a truncation rewrite, and a
-  data-URI sanitization story — far more than the feature requires. It remains
-  a reasonable future project if formatted-markdown-everywhere is desired.
+- **Approach:** carry images as a plain `images: TranscriptImage[]` list on the
+  event (populated via the same per-event side-channel as `sidecars`/`warnings`)
+  and render them as a block. This deliberately avoids the marker-based inline
+  approach and a full markdown renderer; both are larger than this feature
+  needs. Inline-among-text positioning and full transcript markdown remain
+  possible future projects.
 
 ## Architecture
 
@@ -41,146 +42,133 @@ viewing. Images should also survive markdown export.
 
 ```
 parseClaudeJsonl (parse.ts)
-  -> recordToEvent / progressToEvent
+  -> recordToEvent (user records carry tool_result blocks)
      -> renderContent -> renderBlock (per content block)
-        -> renderToolResult (tool_result content; arrays recurse into renderBlock)
+        -> renderToolResult (tool_result content; arrays map through renderBlock)
   -> TranscriptEvent { body: string, chips, details, ... }
 renderPreview -> PreviewItem { body, ... }
 TranscriptBody renders item.body as plain text in a <pre>
 renderMarkdown -> export string (also feeds Compare view via renderSafeText)
 ```
 
-`body` is a flat plain-text string everywhere. The design carries image
-payloads as **structured data alongside the body**, and embeds **short markers
-in the body text** to record each image's position.
+The design adds a structured `images` list alongside `body`, populated only on
+the tool-result path, and renders it as a block. The `body` string itself is
+never rewritten or parsed.
 
 ### 1. Data model — `lib/jsonl/types.ts`
 
 ```ts
 export interface TranscriptImage {
-  id: string        // unique within its event, e.g. "img-0"
   mediaType: string // e.g. "image/png"
   data: string      // raw base64, NO "data:" prefix
 }
 ```
 
 Add `images: TranscriptImage[]` to both `TranscriptEvent` and `PreviewItem`.
+No id field is needed — images render in encounter order as a list.
 
-### 2. Marker protocol — `lib/jsonl/parse.ts`
+### 2. Parsing — `lib/jsonl/parse.ts`
 
-- The marker wraps the image id in two Private Use Area code points,
-  U+E000 (lead) and U+E001 (trail). PUA characters do not occur in normal
-  transcript text, so they will not collide with content and render invisibly
-  if ever left unmatched. Written with escapes, the marker for id `img-0` is the
-  string `"\uE000img-0\uE001"`.
-- Export shared constants/helpers from `parse.ts` so other modules reuse them:
-  - `imageMarker(id)` returns `` `\uE000${id}\uE001` ``
-  - `IMAGE_MARKER_PATTERN` is the global, id-capturing regex
-    `/\uE000(img-\d+)\uE001/g`
+- Add a fresh **per-event** `images: TranscriptImage[]` array, created in
+  `recordToEvent` (and `progressToEvent`, since agent progress can wrap a
+  user/tool message), threaded through the existing `helpers` object next to
+  the shared `sidecars` / `warnings` arrays. After rendering, assign
+  `event.images = images`.
+- In `renderToolResult`, the `Array.isArray(content)` branch: for each item, if
+  it is a base64 image block (`item.type === 'image'`,
+  `item.source?.type === 'base64'`, non-empty `source.data`):
+  - push `{ mediaType, data: source.data }` to `helpers.images`
+  - contribute an **empty body** for that item (so a pure-image tool result has
+    no leftover placeholder text), keeping the `image` chip and the existing
+    redacted metadata `details` entry.
+  - Non-image items continue through `renderBlock` unchanged.
+- Also guard the bare-object `tool_result` branch: if `content` itself is a
+  single base64 image object, handle it the same way.
+- The general `renderBlock` `block.type === 'image'` branch is left as-is (text
+  placeholder). This keeps user-pasted / non-tool-result images out of scope.
+- Empty-body fallback: in `recordToEvent`, compute
+  `body: rendered.body || (images.length ? '' : emptyMessageText(record.type))`
+  so a tool result that is purely an image is not labelled "no displayable
+  content".
 
-### 3. Parsing — `lib/jsonl/parse.ts`
-
-- Thread a fresh **per-event** `images: TranscriptImage[]` array through the
-  existing `helpers` object (same mechanism as the shared `sidecars` /
-  `warnings` arrays, but created new per event). Create it in `recordToEvent`
-  (user/assistant branch) and in `progressToEvent`, and assign it to
-  `event.images` after rendering.
-- In `renderBlock`'s `block.type === 'image'` branch:
-  - When `block.source?.type === 'base64'` and `source.data` is a non-empty
-    string:
-    - `const id = 'img-' + helpers.images.length`
-    - push `{ id, mediaType, data: source.data }` to `helpers.images`
-    - return body = `imageMarker(id)`, keep `chips: ['image']` and the existing
-      redacted `details` entry (raw metadata stays inspectable).
-  - Otherwise (URL source, missing/empty data): keep today's
-    `[Image: ${mediaType}...]` text fallback and push no image.
-- Tool-result images need no special handling: `renderToolResult` already
-  passes `helpers` into `renderBlock` for array content, so nested images land
-  in the same per-event `images` array automatically.
-
-### 4. Preview pipeline — `lib/jsonl/renderPreview.ts`
+### 3. Preview pipeline — `lib/jsonl/renderPreview.ts`
 
 Forward `images: event.images` onto each `PreviewItem`.
 
-### 5. Rendering — `components/jsonl/TranscriptBody.tsx`
+### 4. Rendering — `components/jsonl/TranscriptBody.tsx`
 
-- New prop: `images: TranscriptImage[]`.
-- Build a lookup `Map<id, TranscriptImage>` from the prop.
-- Replace the single `<pre>{preview.text}</pre>` with an interleaved render:
-  split `preview.text` on `IMAGE_MARKER_PATTERN`; text segments are rendered
-  with the existing `<pre>` styling (`whitespace-pre-wrap break-words font-mono
-  text-sm`), and each captured id becomes an `<img>`:
+- New prop: `images: TranscriptImage[]` (default `[]`).
+- Body rendering is unchanged: the existing `<pre>` with `preview.text`, the
+  truncation controls, and the copy button all stay exactly as they are. (When
+  the body is empty and images exist, the `<pre>` simply renders nothing — no
+  special handling needed beyond not showing truncation controls, which already
+  depends on `preview.isTruncated`.)
+- After the body, render an images block (only when `images.length > 0`): each
+  image as an `<img>`:
   - `src={`data:${mediaType};base64,${data}`}`
   - scaled: `max-h-80 max-w-full`, rounded border, `loading="lazy"`,
     `cursor-zoom-in`, `alt={mediaType}`
-  - `onClick` sets lightbox state to this image's data-URI
-  - if an id has no matching image (shouldn't happen), render the raw matched
-    text unchanged.
+  - `onClick` opens the lightbox for this image's data-URI.
 - **Lightbox:** local `const [lightboxSrc, setLightboxSrc] = useState<string|null>(null)`.
-  When non-null render a `fixed inset-0 z-50` overlay: dark backdrop
+  When non-null, render a `fixed inset-0 z-50` overlay: dark backdrop
   (`bg-black/80`), image centered and fit to viewport
   (`max-h-[90vh] max-w-[90vw]`, aspect preserved). Clicking the backdrop closes
-  (`setLightboxSrc(null)`); clicking the image itself calls `stopPropagation`.
-  An Esc `keydown` listener is added while open and removed on close (mirrors
-  the folder-dialog Esc pattern in `JsonlConverter.tsx`).
-- **Copy button:** strip markers from the copied text, substituting
-  `[Image: ${mediaType}]` (looked up by id) so the clipboard stays readable
-  instead of containing invisible PUA characters.
-- **Truncation interaction:** unchanged. `createTextPreview` still operates on
-  the marker-bearing string; markers are 3 code points each, so line/char
-  counts are effectively unaffected. A marker located in the truncated-away
-  region simply does not render until the body is expanded — acceptable.
+  it (`setLightboxSrc(null)`); clicking the image itself calls
+  `stopPropagation`. An Esc `keydown` listener is added while open and removed
+  on close (mirrors the folder-dialog Esc pattern in `JsonlConverter.tsx`).
 
-### 6. Wiring — `components/JsonlConverter.tsx`
+### 5. Wiring — `components/JsonlConverter.tsx`
 
 - Pass `images={item.images}` to `<TranscriptBody>` (~line 1226).
-- Search index (~line 201) builds a string from `item.body`; strip markers
-  there with `IMAGE_MARKER_PATTERN` so invisible PUA characters never end up in
-  the search corpus.
+- Search index (~line 201): no change needed — the body contains no markers.
 
-### 7. Export — `lib/jsonl/renderMarkdown.ts`
+### 6. Export — `lib/jsonl/renderMarkdown.ts`
 
-- In `renderEvent`, after assembling `event.body`, replace each marker with
-  `![${mediaType}](data:${mediaType};base64,${data})` using `event.images`
-  (lookup by captured id). Unmatched id → replace with `[Image]`.
-- No change needed for the Compare view: its "Readable Markdown" pane runs the
-  export string through `renderSafeText`, whose `BASE64_RUN_PATTERN` already
-  redacts the long base64 run to `[base64 omitted: N chars]`. So the compare
-  pane shows a clean placeholder; only the downloaded `.md` carries the full
-  data-URI.
+- In `renderEvent`, after the existing body chunk, append one markdown image per
+  `event.images` entry: `![${mediaType}](data:${mediaType};base64,${data})`.
+- No change for the Compare view: its "Readable Markdown" pane runs the export
+  string through `renderSafeText`, whose `BASE64_RUN_PATTERN` already redacts the
+  long base64 run to `[base64 omitted: N chars]`. So the compare pane shows a
+  clean placeholder; only the downloaded `.md` carries the full data-URI.
 
 ## Error handling / edge cases
 
-- **Non-base64 image source (URL) or empty data:** text-placeholder fallback,
-  no marker, no image entry.
-- **Marker present but image missing at render/export:** render the raw text /
-  `[Image]` respectively; never crash.
+- **Non-base64 image (URL source) or empty data, even inside a tool_result:**
+  keep today's `[Image: ...]` text placeholder, push no image.
+- **Tool result with both text and image(s):** text renders in the body, images
+  render as the block beneath it.
+- **Multiple images in one tool result:** all render in the images block, in
+  encounter order.
 - **Very large images:** displayed scaled; `loading="lazy"` defers offscreen
-  decode. No size cap beyond the CSS max dimensions (matches user decision to
-  render all images).
-- **Multiple images in one event:** ids are sequential (`img-0`, `img-1`, …)
-  within the event; markers and lookups stay unambiguous.
+  decode. No size cap beyond the CSS max dimensions.
+- **Images outside tool results** (user-pasted, sidecar-embedded, etc.):
+  unchanged text placeholder — intentionally out of scope.
 
 ## Testing
 
 Test infrastructure is vitest in a node environment — no jsdom /
 testing-library — so tests are scoped to the pure `lib/` functions. Component
-behavior (inline `<img>`, lightbox, copy-strip) is verified by running the app.
+behavior (the rendered `<img>` block and the lightbox) is verified by running
+the app.
 
 - `lib/jsonl/__tests__/parse-render.test.ts`:
   - Update the existing assertion expecting `[Image: image/png` for a base64
-    image: it should now produce a marker in the body and one `event.images`
-    entry carrying the original base64 + media type.
-  - Add: a base64 image nested inside a `tool_result` content array produces an
-    `event.images` entry and a marker.
-  - Add: a URL-source / empty-data image still falls back to the
-    `[Image: ...]` text placeholder with no image entry.
-- `renderMarkdown`: a base64 image renders as a `![...](data:...;base64,...)`
-  data-URI in the export string.
+    image inside a tool_result: it should now produce an `event.images` entry
+    carrying the original base64 + media type, and no placeholder text in the
+    body.
+  - Add: a base64 image as a direct tool_result content array entry produces an
+    `event.images` entry.
+  - Add: a URL-source / empty-data image inside a tool_result still falls back
+    to the `[Image: ...]` text placeholder with no image entry.
+  - Add: a base64 image in a non-tool-result context (e.g. plain user content)
+    keeps the text placeholder and produces no `event.images` entry.
+- `renderMarkdown`: a tool-result base64 image is appended to the event as a
+  `![...](data:...;base64,...)` data-URI in the export string.
 
 ## Out of scope
 
-- Full markdown rendering of transcript bodies (separate future project).
+- Inline-among-text image positioning (the dropped marker approach).
+- Rendering user-pasted or sidecar-embedded images.
+- Full markdown rendering of transcript bodies.
 - Lightbox zoom/pan, image carousel / prev-next navigation.
 - Any per-image size cap or downscaling of the embedded data.
-- Sidecar-resolved images beyond what already flows through `renderBlock`.
