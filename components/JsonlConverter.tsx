@@ -101,6 +101,7 @@ export default function JsonlConverter() {
   const [viewMode, setViewMode] = useState<ViewMode>('transcript')
   const [isDesktop, setIsDesktop] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
+  const [clearOnImport, setClearOnImport] = useState(true)
   const [importProjects, setImportProjects] = useState<ClaudeProject[]>([])
   const [importLoading, setImportLoading] = useState(false)
   const [importError, setImportError] = useState('')
@@ -449,7 +450,7 @@ export default function JsonlConverter() {
         setImportError('No conversation files found in this project.')
         return
       }
-      ingestFiles(records)
+      ingestFiles(records, { replace: clearOnImport })
       setImportModalOpen(false)
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'Could not read this project.')
@@ -893,6 +894,18 @@ export default function JsonlConverter() {
                   </button>
                 ))
               )}
+            </div>
+
+            <div className="px-4 py-3 border-t border-everforest-bg4">
+              <label className="flex items-center gap-2 text-xs text-everforest-fg cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={clearOnImport}
+                  onChange={(event) => setClearOnImport(event.target.checked)}
+                  className="accent-everforest-purple"
+                />
+                Clear loaded sessions before importing
+              </label>
             </div>
           </div>
         </div>
