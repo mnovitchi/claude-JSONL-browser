@@ -1,0 +1,21 @@
+# Changelog
+
+_v0.2.0 · 2026-06-12_
+
+## Releases & versioning
+- **Local versioning system** — releases now follow SemVer, driven by `npm version`. A single bump propagates the version across `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`, then commits and tags the build `vX.Y.Z`.
+- **In-app version badge** — the app header now shows the running version (e.g. `v0.2.0`), with the build's git short-hash and date in a tooltip, so any build can be identified at a glance.
+
+_2026-06-11 · commit c4ba475_
+
+## File saving
+- **Native file saving** — *Readable* and *Full* Markdown exports save through the native "Save As" dialog (they previously did nothing in the webview).
+
+## Loading sessions
+- **Import Claude Projects** — reads logs directly from `~/.claude/projects/<project>/<session>.jsonl` (with `tool-results/` sidecars) via a project picker, instead of manually navigating to the folder.
+- **Clear-on-load option** — loading from a folder now offers to unload current traces first: a default-on "Clear loaded sessions" checkbox in the import modal, and a three-way confirm (Clear & load / Keep & add / Cancel) for the OS folder picker. *Add Files* and drag-drop still append silently.
+
+## Transcript viewing
+- **Truncate long event bodies** — bodies over ~20 lines / ~2000 chars collapse by default with a `Hidden: N lines` label, *Show more/less*, and a *Copy full body* button. Exported Markdown stays complete.
+- **Click-to-collapse** — clicking an expanded body collapses it without scrolling to the bottom button; text selection still works.
+- **Per-file view state** — switching files in the sidebar now remembers each file's view mode, scroll position, and open disclosures (session-only).

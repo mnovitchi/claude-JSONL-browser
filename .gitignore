@@ -39,6 +39,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# generated build metadata (see scripts/gen-build-info.mjs)
+/lib/build-info.ts
+
 img_references
 MDdocs/
 *.jsonl
