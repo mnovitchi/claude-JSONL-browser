@@ -1225,6 +1225,7 @@ function PreviewPane({
 
               <TranscriptBody
                 body={item.body}
+                images={item.images}
                 initialExpanded={expandedBodies[item.id] ?? false}
                 onExpandedChange={(expanded) => onToggleBody(item.id, expanded)}
               />

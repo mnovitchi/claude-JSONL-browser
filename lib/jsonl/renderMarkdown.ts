@@ -56,7 +56,12 @@ export function renderMarkdown(result: ParseResult, mode: MarkdownMode = 'readab
 
 function renderEvent(event: TranscriptEvent, mode: MarkdownMode): string {
   const heading = `## ${event.title}${event.timestamp ? ` - ${formatTimestamp(event.timestamp)}` : ''}`
-  const chunks = [heading, '', event.body || '_No displayable content._']
+  const bodyText = event.body || (event.images.length > 0 ? '' : '_No displayable content._')
+  const chunks = [heading, '', bodyText]
+
+  event.images.forEach((image) => {
+    chunks.push('', `![${image.mediaType}](data:${image.mediaType};base64,${image.data})`)
+  })
 
   if (event.chips.length > 0) {
     chunks.push('', `_${event.chips.join(' · ')}_`)

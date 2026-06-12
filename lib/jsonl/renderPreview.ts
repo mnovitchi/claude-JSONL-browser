@@ -12,6 +12,7 @@ export function renderPreview(result: ParseResult): PreviewModel {
       body: event.body,
       chips: event.chips,
       details: event.details,
+      images: event.images,
       hasDetails: event.details.length > 0,
       detailCount: event.details.length,
       isCollapsedByDefault: event.isCollapsedByDefault ?? event.details.length > 0,
