@@ -1,10 +1,19 @@
 # Changelog
 
-_v0.2.0 · 2026-06-12_
+_v0.2.0 · 2026-06-12 · commit 3dbb3ae_
 
-## Releases & versioning
-- **Local versioning system** — releases now follow SemVer, driven by `npm version`. A single bump propagates the version across `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`, then commits and tags the build `vX.Y.Z`.
-- **In-app version badge** — the app header now shows the running version (e.g. `v0.2.0`), with the build's git short-hash and date in a tooltip, so any build can be identified at a glance.
+## Transcript viewing
+- **Inline tool-result images** — images returned by tools now render inline in the transcript; click one to open it full-size in a lightbox.
+- **Readable JSON tool results** — tool results that are JSON objects (e.g. structured command output) now show as a formatted JSON block instead of the literal `[object Object]`.
+
+## Exporting
+- **Images in Markdown export** — exported Markdown embeds tool-result images inline (as data URIs), so they travel with the file.
+
+## Compare view
+- **Redacted image payloads** — long inline image data is replaced with a short `[base64 omitted: N chars]` placeholder, keeping the compared text readable.
+
+## App
+- **Version in the header** — the header now shows the running version, with the build's commit and date in a tooltip.
 
 _2026-06-11 · commit c4ba475_
 
