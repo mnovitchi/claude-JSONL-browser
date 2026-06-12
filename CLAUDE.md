@@ -12,10 +12,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Releasing (local, private builds)
 
-This is a Tauri desktop app released as a stand-alone executable, built locally. Versioning is **SemVer** (`X.Y.Z`); `package.json` is the single source of truth and is mirrored into `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`.
+This is a Tauri desktop app released as a stand-alone executable, built locally. Versioning is **SemVer** (`X.Y.Z`); `package.json` is the single source of truth and is mirrored into `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and `src-tauri/Cargo.lock`.
 
-1. Update `CHANGELOG.md` (and `CHANGELOG.slack.txt`) for the release.
-2. Bump the version: `npm version patch` (or `minor` / `major`). This runs `scripts/sync-version.mjs` to propagate the new version into the Tauri/Cargo files, then commits all three and creates the `vX.Y.Z` git tag.
+1. Update `CHANGELOG.md` for the release.
+2. Bump the version: `npm version patch` (or `minor` / `major`). This runs `scripts/sync-version.mjs` to propagate the new version into the Tauri/Cargo files, then commits them and creates the `vX.Y.Z` git tag.
 3. Build the installer: `npm run release` (= `npm run tauri:build`). The `prebuild` hook regenerates `lib/build-info.ts` (version + git short-hash + build date — shown in the app header), and Tauri emits an installer named with the version under `src-tauri/target/release/bundle/` (NSIS `.exe`, MSI `.msi`).
 4. Distribute the installer from `src-tauri/target/release/bundle/`.
 5. Push when ready: `git push && git push --tags`.
