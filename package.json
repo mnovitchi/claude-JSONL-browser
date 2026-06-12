@@ -1,6 +1,6 @@
 {
   "name": "jsonlbrowser-withlinda",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "JSONL to Markdown converter with Everforest theme",
   "scripts": {
