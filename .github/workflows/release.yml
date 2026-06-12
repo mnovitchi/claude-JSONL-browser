@@ -1,10 +1,16 @@
 name: Release
 
-# Push a version tag (e.g. v1.0.0) to build installers and publish a GitHub Release.
+# DEACTIVATED: the upstream repo has no license, so we must not generate or
+# publish binary releases for the moment. The tag trigger below is disabled to
+# stop "release by tag" from auto-building installers. The workflow can only be
+# started manually (workflow_dispatch), and even that should stay unused until a
+# license is in place. To re-enable automatic releases, restore the push/tags
+# trigger.
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+  # push:
+  #   tags:
+  #     - 'v*'
 
 permissions:
   contents: write # required for tauri-action to create the Release and upload assets
