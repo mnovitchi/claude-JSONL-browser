@@ -11,7 +11,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
-    "version": "node scripts/sync-version.mjs && git add src-tauri/tauri.conf.json src-tauri/Cargo.toml",
+    "version": "node scripts/sync-version.mjs && git add src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock",
     "release": "npm run tauri:build",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
