@@ -1,14 +1,18 @@
 {
   "name": "jsonlbrowser-withlinda",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "private": true,
   "description": "JSONL to Markdown converter with Everforest theme",
   "scripts": {
+    "predev": "node scripts/gen-build-info.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/gen-build-info.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
+    "version": "node scripts/sync-version.mjs && git add src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock",
+    "release": "npm run tauri:build",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"

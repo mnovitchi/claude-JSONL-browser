@@ -28,6 +28,7 @@ import {
   X,
 } from 'lucide-react'
 import { cn, formatFileDate, formatFileSize, generateFileId } from '@/lib/utils'
+import { BUILD_INFO } from '@/lib/build-info'
 import {
   isTauri,
   listClaudeProjects,
@@ -787,6 +788,12 @@ export default function JsonlConverter() {
             )}
             <FileText className="w-6 h-6 text-everforest-green flex-shrink-0" />
             <h1 className="text-lg sm:text-xl font-medium text-everforest-fg truncate">JSONL Browser</h1>
+            <span
+              className="text-xs text-everforest-grey1 flex-shrink-0"
+              title={`${BUILD_INFO.gitHash} · ${BUILD_INFO.buildDate}`}
+            >
+              v{BUILD_INFO.version}
+            </span>
           </div>
 
           {currentFile?.markdown && (
